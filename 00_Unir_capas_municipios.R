@@ -153,6 +153,10 @@ if (exists("capa.incremental")){
 }
 
 unique(capa.buildings@data[,c("INE", "municipio")])
-
+nrow(unique(capa.buildings@data[,c("INE", "municipio")]))
+#plot(capa.buildings[capa.buildings$INE=="26138",])
+sapply(capa.buildings@data, class)
 suppressWarnings(writeOGR(capa.buildings, dsn = dir.salida, layer = "Building", driver = "ESRI Shapefile",overwrite_layer = T ))
+
+##Agregar código para borrado del directorio temp donde se descomprimen las capas temporalmente
 
