@@ -77,7 +77,9 @@ AsociaRefcat <- function(DF_municipio, capa_municipio){
   portales.solape.directo <- portales.con.parcela[is.na(portales.con.parcela$refCAT)== F,]
   portales.buscar.parcela.cercana <- portales.con.parcela[is.na(portales.con.parcela$refCAT),]
   portales.buscar.parcela.cercana <- portales.buscar.parcela.cercana[,c("id.building", "Provincia", "Poblacion", "ADDRESS.X", "ADDRESS.Y", "N")]
-  portales.solape.directo$dist <- 0.0
+  if (nrow(portales.solape.directo)>0){
+    portales.solape.directo$dist <- 0.0
+  }
   
   if (nrow(portales.buscar.parcela.cercana)>0){
     
@@ -319,8 +321,91 @@ DT_municipio <- buildings.gis[Poblacion == 'HERENCIA',]
 polig_municipio <- CLM[CLM$municipio == 'HERENCIA',]
 polig_municipio <- capa.unificada[capa.unificada$municipio == 'HERENCIA',]
 proj4string(polig_municipio) <- CRS("+init=epsg:3042")
+DF_municipio <- DT_municipio
+capa_municipio <- polig_municipio
+##La funcion recibe una capa de polígonos (capa_municipio), en proyeccion CRS("+init=epsg:3042")
+## y un DT de edificios con coordenadas en proyección CRS("+init=epsg:3857") Google
+## Devuelve el DT de los edificios, con la refCAT asociada desde la capa de polígonos
 
-resultado <- AsociaRefcat(DT_municipio, polig_municipio)
+#Establecemos el sistema de coordenadas de la capa municipio reproyectamos si es necesario
+if(proj4string(capa_municipio) != "+init=epsg:3042 +proj=utm +zone=30 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"){
+  
+  capa_municipio <- spTransform(capa_municipio, CRS("+init=epsg:3042"))
+  
+}
+proj4string(capa_municipio) <- CRS("+init=epsg:3042")
+
+# Creamos la capa de puntos desde el DF
+coordenadas <- as.matrix(DF_municipio[,.(ADDRESS.X, ADDRESS.Y)])
+capa_puntos <- SpatialPointsDataFrame(coordenadas, DF_municipio, proj4string = CRS("+init=epsg:3857"), coords.nrs = c(4,5), match.ID = T )
+# LLevamos a la misma proyeccion que los poligonos
+capa_puntos <- spTransform(capa_puntos, CRS("+init=epsg:3042"))
+proj4string(capa_puntos) <- CRS("+init=epsg:3042")
+
+plot(capa_puntos)
+plot(capa_municipio, add=T)
+
+portales.con.parcela <- over(capa_puntos, capa_municipio)
+portales.con.parcela$indice <- rownames(portales.con.parcela)
+capa_puntos$indice <- rownames(capa_puntos@data)
+portales.con.parcela <- merge(capa_puntos@data, portales.con.parcela, by.x = "indice", by.y = "indice")
+
+# Seleccionamos solo columnas de interes
+portales.con.parcela$indice <- NULL
+
+## Separamos los que han solapado puntos con poligonos y los que no
+
+portales.solape.directo <- portales.con.parcela[is.na(portales.con.parcela$refCAT)== F,]
+portales.buscar.parcela.cercana <- portales.con.parcela[is.na(portales.con.parcela$refCAT),]
+portales.buscar.parcela.cercana <- portales.buscar.parcela.cercana[,c("id.building", "Provincia", "Poblacion", "ADDRESS.X", "ADDRESS.Y", "N")]
+portales.solape.directo$dist <- 0.0
+
+if (nrow(portales.buscar.parcela.cercana)>0){
+  
+  ## Hay que seleccionar de la capa de portales los que no han cruzado directamente, creando una capa de nuevo
+  # Creamos la capa de puntos desde el DF
+  portales.buscar.parcela.cercana <- as.data.table(portales.buscar.parcela.cercana)
+  coordenadas <- as.matrix(portales.buscar.parcela.cercana[,.(ADDRESS.X, ADDRESS.Y)])
+  capa_puntos <- SpatialPointsDataFrame(coordenadas, portales.buscar.parcela.cercana, proj4string = CRS("+init=epsg:3857"), coords.nrs = c(4,5), match.ID = T )
+  # LLevamos a la misma proyeccion que los poligonos
+  capa_puntos <- spTransform(capa_puntos, CRS("+init=epsg:3042"))
+  proj4string(capa_puntos) <- CRS("+init=epsg:3042")
+  
+  dist <- gDistance(capa_puntos, capa_municipio, byid=T)
+  dist.DF <- data.frame(dist)
+  colnames(dist.DF) <- capa_puntos$id.building
+  dist.DF$parcela <- capa_municipio$refCAT
+  dist.DF <- as.data.table(dist.DF)
+  dist.DF <- melt.data.table(dist.DF, 'parcela')
+  setnames(dist.DF, c('variable', 'value'), c('building', 'dist'))
+  dist.DF[, rank := rank(dist), by = 'building']
+  dist.DF <- dist.DF[rank == 1,]
+  setnames(dist.DF, c('parcela', 'building'), c('refCAT', 'id.building'))
+  
+  
+  if (nrow(portales.solape.directo)>0){
+    ## Crear DT con edificios cruce directo y por min distancia
+    
+    total.portales <- rbind(portales.solape.directo[, c("id.building", "refCAT", "dist")], 
+                            dist.DF[, c("id.building", "refCAT", "dist")])
+    
+  }else{
+    
+    total.portales <- dist.DF[, c("id.building", "refCAT", "dist")]
+    
+  }
+  
+  
+}else{
+  
+  total.portales <- portales.solape.directo[, c("id.building", "refCAT", "dist")]
+  
+}
+
+
+
+## Agregar la refCAT al DF de entrada y este es el resultado de la funcion
+return(merge.data.frame(DF_municipio, total.portales, all.x = T, by.x ='id.building', by.y = 'id.building'))
 
 #############################################################
 ##                                                         ##
