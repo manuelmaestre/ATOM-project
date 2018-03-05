@@ -46,8 +46,12 @@ AsociaRefcat <- function(DF_municipio, capa_municipio){
   ## y un DT de edificios con coordenadas en proyección CRS("+init=epsg:3857") Google
   ## Devuelve el DT de los edificios, con la refCAT asociada desde la capa de polígonos
   
-  #Establecemos el sistema de coordenadas de la capa municipio
-  
+  #Establecemos el sistema de coordenadas de la capa municipio reproyectamos si es necesario
+  if(proj4string(capa_municipio) != "+init=epsg:3042 +proj=utm +zone=30 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"){
+    
+    capa_municipio <- spTransform(capa_municipio, CRS("+init=epsg:3042"))
+    
+  }
   proj4string(capa_municipio) <- CRS("+init=epsg:3042")
   
   # Creamos la capa de puntos desde el DF
@@ -73,31 +77,50 @@ AsociaRefcat <- function(DF_municipio, capa_municipio){
   portales.solape.directo <- portales.con.parcela[is.na(portales.con.parcela$refCAT)== F,]
   portales.buscar.parcela.cercana <- portales.con.parcela[is.na(portales.con.parcela$refCAT),]
   portales.buscar.parcela.cercana <- portales.buscar.parcela.cercana[,c("id.building", "Provincia", "Poblacion", "ADDRESS.X", "ADDRESS.Y", "N")]
-  
-  ## Hay que seleccionar de la capa de portales los que no han cruzado directamente, creando una capa de nuevo
-  # Creamos la capa de puntos desde el DF
-  portales.buscar.parcela.cercana <- as.data.table(portales.buscar.parcela.cercana)
-  coordenadas <- as.matrix(portales.buscar.parcela.cercana[,.(ADDRESS.X, ADDRESS.Y)])
-  capa_puntos <- SpatialPointsDataFrame(coordenadas, portales.buscar.parcela.cercana, proj4string = CRS("+init=epsg:3857"), coords.nrs = c(4,5), match.ID = T )
-  # LLevamos a la misma proyeccion que los poligonos
-  capa_puntos <- spTransform(capa_puntos, CRS("+init=epsg:3042"))
-  proj4string(capa_puntos) <- CRS("+init=epsg:3042")
-  
-  dist <- gDistance(capa_puntos, capa_municipio, byid=T)
-  dist.DF <- data.frame(dist)
-  colnames(dist.DF) <- capa_puntos$id.building
-  dist.DF$parcela <- capa_municipio$refCAT
-  dist.DF <- as.data.table(dist.DF)
-  dist.DF <- melt.data.table(dist.DF, 'parcela')
-  setnames(dist.DF, c('variable', 'value'), c('building', 'dist'))
-  dist.DF[, rank := rank(dist), by = 'building']
-  dist.DF <- dist.DF[rank == 1,]
-  setnames(dist.DF, c('parcela', 'building'), c('refCAT', 'id.building'))
-  
-  ## Crear DT con edificios cruce directo y por min distancia
   portales.solape.directo$dist <- 0.0
-  total.portales <- rbind(portales.solape.directo[, c("id.building", "refCAT", "dist")], 
-                          dist.DF[, c("id.building", "refCAT", "dist")])
+  
+  if (nrow(portales.buscar.parcela.cercana)>0){
+    
+    ## Hay que seleccionar de la capa de portales los que no han cruzado directamente, creando una capa de nuevo
+    # Creamos la capa de puntos desde el DF
+    portales.buscar.parcela.cercana <- as.data.table(portales.buscar.parcela.cercana)
+    coordenadas <- as.matrix(portales.buscar.parcela.cercana[,.(ADDRESS.X, ADDRESS.Y)])
+    capa_puntos <- SpatialPointsDataFrame(coordenadas, portales.buscar.parcela.cercana, proj4string = CRS("+init=epsg:3857"), coords.nrs = c(4,5), match.ID = T )
+    # LLevamos a la misma proyeccion que los poligonos
+    capa_puntos <- spTransform(capa_puntos, CRS("+init=epsg:3042"))
+    proj4string(capa_puntos) <- CRS("+init=epsg:3042")
+    
+    dist <- gDistance(capa_puntos, capa_municipio, byid=T)
+    dist.DF <- data.frame(dist)
+    colnames(dist.DF) <- capa_puntos$id.building
+    dist.DF$parcela <- capa_municipio$refCAT
+    dist.DF <- as.data.table(dist.DF)
+    dist.DF <- melt.data.table(dist.DF, 'parcela')
+    setnames(dist.DF, c('variable', 'value'), c('building', 'dist'))
+    dist.DF[, rank := rank(dist), by = 'building']
+    dist.DF <- dist.DF[rank == 1,]
+    setnames(dist.DF, c('parcela', 'building'), c('refCAT', 'id.building'))
+    
+    
+    if (nrow(portales.solape.directo)>0){
+      ## Crear DT con edificios cruce directo y por min distancia
+    
+      total.portales <- rbind(portales.solape.directo[, c("id.building", "refCAT", "dist")], 
+                            dist.DF[, c("id.building", "refCAT", "dist")])
+    
+    }else{
+      
+      total.portales <- dist.DF[, c("id.building", "refCAT", "dist")]
+    
+    }
+    
+    
+    }else{
+      
+      total.portales <- portales.solape.directo[, c("id.building", "refCAT", "dist")]
+      
+    }
+    
   
   
   ## Agregar la refCAT al DF de entrada y este es el resultado de la funcion
@@ -116,6 +139,8 @@ AsociaRefcat <- function(DF_municipio, capa_municipio){
 gis.appartments.file <- './datos_gis/Fichero_cobertura.csv'
 ruta.capa.unificada <- './capas_unificadas/Building.shp'
 ruta.fichero.control <- './ficheros_excel/11_listado_archivos_buildings.xlsm'
+buildings.REFCAT.file <- './buildings_gis_refcat/buildings_refcat.csv'
+directorio.hist.buildings.refcat <- './buildings_gis_refcat/historico/'
 
 ## Cargar tabla de datos de GIS
 
@@ -151,11 +176,56 @@ fichero.control <- data.table(read_excel(ruta.fichero.control, sheet = 'municipi
 
 ## Cargar el fichero si existe de idbuildings ya asociados a una REFCAT. Haciendo copia histórica de este fichero tb.
 
+error.open.file <- try(read.table(
+  buildings.REFCAT.file,
+  header = T,
+  sep = ";",
+  dec = ',',
+  encoding = 'UTF-8'))
+
+if (class(error.open.file) != "try-error"){ ##Ya hay un fichero de buildings-REFCAT
+  
+  ## Cargamos los idbuildings ya con refcat
+  buildings.REFCAT <- read.table(
+    buildings.REFCAT.file,
+    header = T,
+    sep = ";",
+    dec = ',',
+    encoding = 'UTF-8')
+  
+  ## Historificamos el fichero existente, como'./buildings_gis_refcat/historico/AAMMDD_HHMM_buildings_refcat.csv'
+  
+  AAMMDDHH <- Sys.time()
+  AAMMDDHH <- substr(AAMMDDHH,1,nchar(AAMMDDHH-2))
+  AAMMDDHH <- str_replace_all(AAMMDDHH," ", "_")
+  AAMMDDHH <- str_replace_all(AAMMDDHH,"-", "")
+  AAMMDDHH <- str_replace_all(AAMMDDHH,":", "")
+  AAMMDDHH <- substr(AAMMDDHH, 3, nchar(AAMMDDHH))
+  
+  
+  file.copy(buildings.REFCAT.file, str_c(directorio.hist.buildings.refcat, AAMMDDHH, '_buildings_refcat.csv', sep = '', collapse = T), overwrite = T)
+
+  ## Detectamos los nuevos buildings gis sin REFCAT
+  
+  buildings.sin.REFCAT <- buildings.gis[!(id.building %in% unique(buildings.REFCAT$id.building)),]
+  primera.ejecucion = FALSE
+  
+}else{  ## No hay fichero anterior de buildings-REFCAT
+  
+  ## Utilizamos todos los buildings de gis para buscar su REFCAT
+  buildings.sin.REFCAT <- buildings.gis
+  primera.ejecucion = TRUE
+  
+}
+
+## Dejar sólo para asociar una refCAT, aquellos buildings sin refcat que estén en los municipios objetivo
+## es decir, hay capa para cruzarlos y tienen un municipio de GIS en la tabla de control
+
+## filtramos la tabla de control a los municipios existentes en la capa gráfica
 
 
-## Dejar sólo para asociar una refCAT, aquellos buildings que no la tengan y estén en los municipios objetivo
-## es decir, hay capa para cruzarlos
-
+munis.objetivo <- fichero.control[(ine_txt %in% unique(capa.unificada$INE)),]
+munis.objetivo <- munis.objetivo[(Nombre_GIS %in% unique(buildings.sin.REFCAT$Poblacion)),]
 
 
 
@@ -163,10 +233,73 @@ fichero.control <- data.table(read_excel(ruta.fichero.control, sheet = 'municipi
 ## El bucle recorre todos los municipios en la capa general de buildings
 
 
+if (nrow(munis.objetivo)>0){
+  
+  for (i in seq(nrow(munis.objetivo))){
+    
+    fila <- munis.objetivo[i]
+    print(nrow(munis.objetivo)-i)
+    print(fila$Municipio)
+    if (.Platform$OS.type == "windows") flush.console()
+    
+    ## Llamamos a la funcion que asocia la refcat
+    
+    DT_municipio <- buildings.sin.REFCAT[Poblacion == fila$Nombre_GIS,]
+    polig_municipio <- capa.unificada[capa.unificada$municipio == fila$Municipio,]
+    proj4string(polig_municipio) <- CRS("+init=epsg:3042")
+    
+    resultado <- AsociaRefcat(DT_municipio, polig_municipio)
+    
+    if (i == 1){
+      
+      buildings.new.REFCAT <- resultado
+      
+    }else{
+      
+      buildings.new.REFCAT <- rbind(buildings.new.REFCAT, resultado)
+      
+    }
 
+  }
+  
+}
+
+## Unir los nuevos buildings asociados a REFCAT con los existentes
+
+if (nrow(buildings.new.REFCAT)>0){
+  
+  if (primera.ejecucion){
+    
+    DT.salida <- buildings.new.REFCAT
+    
+    }else{
+      
+      DT.salida <- unique(rbind(buildings.REFCAT, buildings.new.REFCAT))
+    
+    }
+    
+  
+}else{
+  
+  DT.salida <- buildings.REFCAT
+  
+}
 
 
 ## Guardar el fichero de buildings-refCAT generado
+#'./buildings_gis_refcat/buildings_gis_refcat.csv'
+
+write.table(DT.salida,
+            file = buildings.REFCAT.file,
+            sep=";",
+            na = "",
+            dec=",",
+            row.names = F,
+            fileEncoding = 'UTF-8')
+
+
+
+
 
 
 
@@ -184,6 +317,7 @@ CLM <- readOGR('capas_unificadas/CLM_hasta_fase2/Building.shp')
 
 DT_municipio <- buildings.gis[Poblacion == 'HERENCIA',]
 polig_municipio <- CLM[CLM$municipio == 'HERENCIA',]
+polig_municipio <- capa.unificada[capa.unificada$municipio == 'HERENCIA',]
 proj4string(polig_municipio) <- CRS("+init=epsg:3042")
 
 resultado <- AsociaRefcat(DT_municipio, polig_municipio)
@@ -203,6 +337,7 @@ matriz <- data.table(expand.grid(DF.asociar$Municipio, DF.buscados$Poblacion, KE
 matriz[,distancia:=adist(Var1, Var2), by = 'Var1']
 matriz[, ranking:=rank(distancia, ties.method = 'first'), by = 'Var1']
 View(matriz[ranking==1 & distancia <3 ,])
-
-
+copy.table(matriz[ranking==1 & distancia <6 ,])
+write.csv(matriz[ranking==1 & distancia <3 ,],'./cruce_munis_gis.csv',row.names = F)
+copy.table(DF.buscados)
 
