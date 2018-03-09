@@ -7,6 +7,7 @@ library(readxl)
 library(data.table)
 library(tidyr)
 library(rgeos)
+library(dplyr)
 
 ## Common settins & utils
 
@@ -67,7 +68,7 @@ AsociaRefcat <- function(DF_municipio, capa_municipio){
   portales.con.parcela <- over(capa_puntos, capa_municipio)
   portales.con.parcela$indice <- rownames(portales.con.parcela)
   capa_puntos$indice <- rownames(capa_puntos@data)
-  portales.con.parcela <- merge(capa_puntos@data, portales.con.parcela, by.x = "indice", by.y = "indice")
+  portales.con.parcela <- left_join(capa_puntos@data, portales.con.parcela, by.x = "indice", by.y = "indice")
   
   # Seleccionamos solo columnas de interes
   portales.con.parcela$indice <- NULL
@@ -314,12 +315,11 @@ write.table(DT.salida,
 #############################################################
 
 ## Preparamos los datos para simular los parametros de entrada de la funcion
-CLM <- readOGR('capas_unificadas/CLM_hasta_fase2/Building.shp')
 
 
-DT_municipio <- buildings.gis[Poblacion == 'HERENCIA',]
-polig_municipio <- CLM[CLM$municipio == 'HERENCIA',]
-polig_municipio <- capa.unificada[capa.unificada$municipio == 'HERENCIA',]
+
+DT_municipio <- buildings.gis[Poblacion == 'VILLACAÑAS',]
+polig_municipio <- capa.unificada[capa.unificada$municipio == 'VILLACAÑAS',]
 proj4string(polig_municipio) <- CRS("+init=epsg:3042")
 DF_municipio <- DT_municipio
 capa_municipio <- polig_municipio
@@ -348,7 +348,7 @@ plot(capa_municipio, add=T)
 portales.con.parcela <- over(capa_puntos, capa_municipio)
 portales.con.parcela$indice <- rownames(portales.con.parcela)
 capa_puntos$indice <- rownames(capa_puntos@data)
-portales.con.parcela <- merge(capa_puntos@data, portales.con.parcela, by.x = "indice", by.y = "indice")
+portales.con.parcela <- left_join(capa_puntos@data, portales.con.parcela, by.x = "indice", by.y = "indice")
 
 # Seleccionamos solo columnas de interes
 portales.con.parcela$indice <- NULL

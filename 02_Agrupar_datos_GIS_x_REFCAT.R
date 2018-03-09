@@ -47,6 +47,7 @@ ruta.capa.unificada <- './capas_unificadas/Building.shp'
 ruta.fichero.control <- './ficheros_excel/11_listado_archivos_buildings.xlsm'
 buildings.REFCAT.file <- './buildings_gis_refcat/buildings_refcat.csv'
 directorio.hist.buildings.refcat <- './buildings_gis_refcat/historico/'
+dir.salida <- './capas_unificadas'
 
 ## Cargar tabla de datos de GIS
 
@@ -84,6 +85,38 @@ rm(dir.gis)
 rm(buildings.REFCAT)
 rm(buildings.gis)
 
+
+## Cargamos fichero de control para asociar colores y las zonas
+
+colores <- data.table(read_excel(ruta.fichero.control, sheet = 'TipoPermiso', col_names = T, skip = 0))
+zonas <- data.table(read_excel(ruta.fichero.control, sheet = 'municipios_ATOM', col_names = T, skip = 0))
+zonas <- zonas[, c("ine_txt", "ZONA")]
+
+## Asociamos el color a las parcelas
+
+parcelas <- merge(parcelas, colores, all.x = T, by.x='Permiso', by.y='Permiso')
+parcelas$N <- NULL
+parcelas$ranking <- NULL
+
 ## Cargamos la capa general de poligonos de parcelas de municipios
 
 capa.unificada <- readOGR(ruta.capa.unificada)
+
+library(dplyr)
+capa.unificada@data <- left_join(capa.unificada@data, parcelas)
+capa.unificada$Color <- NULL
+colnames(capa.unificada@data) <- c("refCAT", "Uso", "UUII", "Viviendas", "area", "unidad", "INE", "municipio", "Permiso", "COLOR")
+colnames(zonas) <- c("INE", "ZONA")
+zonas[, cantidad:=.N, by='INE']
+zonas <- zonas[cantidad==1,]
+zonas$cantidad <- NULL
+capa.unificada$INE <- as.character(capa.unificada$INE)
+capa.unificada@data <- left_join(capa.unificada@data, zonas)
+
+## Guardamos la capa unificada tematizada
+
+suppressWarnings(writeOGR(capa.unificada, dsn = dir.salida, layer = "Buildings_tema", driver = "ESRI Shapefile",overwrite_layer = T ))
+suppressWarnings(writeOGR(capa.unificada[capa.unificada$ZONA == 1,], dsn = dir.salida, layer = "Building_tema_Z1", driver = "ESRI Shapefile",overwrite_layer = T ))
+suppressWarnings(writeOGR(capa.unificada[capa.unificada$ZONA == 2,], dsn = dir.salida, layer = "Building_tema_Z2", driver = "ESRI Shapefile",overwrite_layer = T ))
+suppressWarnings(writeOGR(capa.unificada[capa.unificada$ZONA == 3,], dsn = dir.salida, layer = "Building_tema_Z3", driver = "ESRI Shapefile",overwrite_layer = T ))
+suppressWarnings(writeOGR(capa.unificada[capa.unificada$ZONA == 4,], dsn = dir.salida, layer = "Building_tema_Z4", driver = "ESRI Shapefile",overwrite_layer = T ))
