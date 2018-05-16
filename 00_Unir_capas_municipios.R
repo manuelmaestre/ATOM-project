@@ -72,8 +72,9 @@ capa.prepara <- function(in.argumento){
   
   ## eliminar columnas no relevantes
   
-  capa.temp <- capa.temp[, c("reference", "currentUse", "numberOfBuildingUnits", "numberOfDwellings", "value", "value_uom")]
-  colnames(capa.temp@data) <- c("refCAT", "Uso", "UUII", "Viviendas", "area", "unidad")
+  capa.temp <- capa.temp[, c("reference", "currentUse", "numberOfBuildingUnits", "numberOfDwellings", "value", "value_uom", "beginning", "conditionOfConstruction")]
+  colnames(capa.temp@data) <- c("refCAT", "Uso", "UUII", "Viviendas", "area", "unidad", "año", "estado")
+  capa.temp$año <- substr(capa.temp$año, start = 1, stop = 4)
   
   ## Agregar ine y nombre de municipio
   
@@ -153,6 +154,7 @@ if (exists("capa.incremental")){
 }
 
 unique(capa.buildings@data[,c("INE", "municipio")])
+temp <- as.data.table(capa.buildings@data)
 nrow(unique(capa.buildings@data[,c("INE", "municipio")]))
 #plot(capa.buildings[capa.buildings$INE=="26138",])
 sapply(capa.buildings@data, class)
@@ -160,3 +162,102 @@ suppressWarnings(writeOGR(capa.buildings, dsn = dir.salida, layer = "Building", 
 
 ##Agregar código para borrado del directorio temp donde se descomprimen las capas temporalmente
 
+
+
+
+
+
+# ##############################################################
+# #############                                   ##############
+# #############   FUNCTION TEST                   ##############
+# #############                                   ##############
+# ##############################################################
+# 
+# #library load
+# 
+# library(rgdal)
+# library(stringr)
+# library(readxl)
+# library(data.table)
+# library(tidyr)
+# 
+# ## Common settins & utils
+# 
+# # Environment cleanning
+# 
+# rm(list = ls())
+# 
+# 
+# # Definición variables estáticas
+# 
+# capas.dir <- './buildings'
+# dir.capa.unificada <- './capas_unificadas'
+# name.capa.unificada <- 'Building'
+# temporal.dir <- './temp' #Almacenar capas extraidas temporales
+# dir.salida <- './capas_unificadas'
+# ruta.capa.unificada <- './capas_unificadas/Building.shp'
+# ruta.fichero.control <- './ficheros_excel/11_listado_archivos_buildings.xlsm'
+# 
+# EPSG <- make_EPSG()
+# EPSG[grepl("ETRS89$", EPSG$note),]
+# 
+# ## Cargar listado general de municipios
+# 
+# 
+# fichero.control <- data.table(read_excel(ruta.fichero.control, sheet = 'municipios_ATOM', col_names = T, skip = 0))
+# fichero.control <- fichero.control[,c("ine_txt", "Municipio", "Nombre fichero", "Existe fichero", "Integrar en capa")]
+# total.munis.unificada <- fichero.control[`Existe fichero`==1 & `Integrar en capa` == 1]
+# total.munis.unificada <- unite(total.munis.unificada,col = "parametro",c("Nombre fichero", "Municipio", "ine_txt"), sep = '^', remove = F)
+# #total.munis.unificada$parametro <- str_c(capas.dir,total.munis.unificada$parametro,sep = '/', collapse = F)
+# total.munis.unificada$parametro <- paste(capas.dir, total.munis.unificada$parametro, sep = '/')
+# 
+# 
+# error.open.file <- try(readOGR(dsn = dir.capa.unificada, name.capa.unificada))
+# 
+# if (class(error.open.file) != "try-error"){
+#   
+#   ## Cargar la capa unificada
+#   capa.unificada <- readOGR(dsn = dir.capa.unificada, name.capa.unificada)
+#   
+# }
+# 
+# if(!exists("capa.unificada")){
+#   
+#   ## No hay capa a la que añadir municipios, cargamos el primer municipio como capa inicial
+#   capa.unificada <- capa.prepara(total.munis.unificada[2, c("parametro")])
+#   
+#   
+# } 
+# 
+# #capa.prepara <- function(in.argumento){
+#   in.argumento <- as.list(total.munis.unificada[1,1] )
+#   tmp.argumento <- unlist(strsplit(toString(in.argumento), split = "^", fixed = T))
+#   
+#   ruta <- tmp.argumento[1]
+#   municipio <- tmp.argumento[2]
+#   INE <- tmp.argumento[3]
+#   
+#   ficheros.en.zip <- unzip(ruta, list = T)
+#   fichero.extraer <- ficheros.en.zip[grep('building.gml',ficheros.en.zip$Name),1]
+#   unzip(zipfile = ruta, exdir = temporal.dir, overwrite = T, files = c(fichero.extraer))
+#   capa.temp <- readOGR(dsn = str_c(temporal.dir, '/',fichero.extraer), layer = "Building", encoding = "UTF-8", disambiguateFIDs = TRUE)
+#   
+#   # Establecer proyeccion
+#   
+#   capa.temp <- spTransform(capa.temp, CRS("+init=epsg:3042"))
+#   proj4string(capa.temp) <- CRS("+init=epsg:3042")
+#   
+#   ## eliminar columnas no relevantes
+#   
+#   capa.temp <- capa.temp[, c("reference", "currentUse", "numberOfBuildingUnits", "numberOfDwellings", "value", "value_uom", "beginning", "conditionOfConstruction")]
+#   colnames(capa.temp@data) <- c("refCAT", "Uso", "UUII", "Viviendas", "area", "unidad", "año", "estado")
+#   capa.temp$año <- substr(capa.temp$año, start = 1, stop = 4)
+#   
+#   ## Agregar ine y nombre de municipio
+#   
+#   capa.temp$INE <- INE
+#   capa.temp$municipio <- municipio
+#   
+#   return(capa.temp)
+#   
+# #}
